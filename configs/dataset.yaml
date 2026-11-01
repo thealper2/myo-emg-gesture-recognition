@@ -1,0 +1,31 @@
+# EMG-EPN-612 dataset location and verified format properties.
+# Paths can be overridden with environment variables (EPN612_DIR, MYO_EMG_DATA_DIR, MYO_EMG_ARTIFACTS_DIR).
+
+dataset:
+  name: EMG-EPN-612
+  version: "JSON release (trainingJSON + testingJSON, 612 users)"
+  root: ${EPN612_DIR:-/mnt/d/Datasets/EMG-EPN612 Dataset}
+  train_dir: trainingJSON   # 306 users, trainingSamples + testingSamples both labelled
+  test_dir: testingJSON     # 306 users, only trainingSamples labelled (testingSamples have no labels)
+  sampling_rate_hz: 200
+  n_channels: 8
+  channel_order: [ch1, ch2, ch3, ch4, ch5, ch6, ch7, ch8]
+  # Class order used everywhere (matches generalInfo.myoPredictionLabel in the JSON files).
+  classes: [noGesture, fist, waveIn, waveOut, open, pinch]
+  emg_min: -128             # Myo raw EMG is int8
+  emg_max: 127
+  min_samples: 600          # recordings shorter than 3 s are excluded
+  max_samples: 1200
+
+paths:
+  processed_dir: ${MYO_EMG_DATA_DIR:-data/processed}
+  artifacts_dir: ${MYO_EMG_ARTIFACTS_DIR:-artifacts}
+
+split:
+  # Development users (trainingJSON) are split into train/validation participants.
+  # Held-out test participants are the official testingJSON users (labelled trainingSamples only).
+  val_fraction: 0.15
+  seed: 42
+
+prepare:
+  workers: 8

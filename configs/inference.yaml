@@ -1,0 +1,33 @@
+# Real-time inference settings (no training happens at inference time).
+
+inference:
+  model_dir: ${MYO_EMG_MODEL_DIR:-artifacts/checkpoints/best_model}
+  device: cpu
+  torch_threads: 1           # single-window inference; more threads only contend with BLE/UI threads
+  stride_samples: null       # null = use the stride saved with the model (10 samples = 50 ms at 200 Hz)
+  confidence_threshold: 0.6  # below this the prediction is reported as "uncertain"
+  smoothing:
+    method: ema              # none | ema | moving_average | majority
+    alpha: 0.5
+    window: 5
+
+device:                      # physical Myo via the local dl-myo library
+  dl_myo_dir: ${DL_MYO_DIR:-/mnt/d/work2/dl-myo}
+  mac: ${MYO_MAC:-}          # empty = scan by Myo service UUID
+  scan_timeout_s: 20
+  emg_mode: emg              # emg = EMGMode.SEND_EMG (as used for EMG-EPN-612), raw = SEND_RAW
+  channel_shift: 0           # cyclic channel rotation if the armband is worn rotated (0 = none)
+  stall_timeout_s: 3.0
+  queue_max_batches: 2000    # 2000 packets x 2 samples = 20 s of buffer before oldest data is dropped
+
+mock:                        # demo mode only; always labelled SIMULATED
+  n_participants: 5          # replay recordings of the first N held-out test participants
+  seed: 0
+
+dashboard:
+  host: 127.0.0.1            # WSL2 forwards localhost: open http://localhost:7860 in Windows
+  port: 7860
+  refresh_s: 0.25            # prediction/diagnostics refresh
+  plot_refresh_s: 0.5        # EMG plot refresh (drawing is the most expensive UI part)
+  plot_seconds: 5
+  max_plot_seconds: 20

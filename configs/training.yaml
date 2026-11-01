@@ -1,0 +1,87 @@
+# EMGNet training configuration. Values here are the defaults; `make hpo` searches over
+# `hpo.search_space` and `make train` applies the best parameters found (artifacts/hpo/best_params.yaml)
+# on top of this file. Any value can also be overridden from the CLI: --set train.lr=0.002
+
+seed: 42
+
+windowing:
+  window_ms: 200              # searched by HPO (200 / 250 / 300 ms); 40 / 50 / 60 samples at 200 Hz
+  stride_samples: 10          # 50 ms between predictions
+  rest_stride_samples: 40     # noGesture recordings are windowed more sparsely to limit class imbalance
+  gesture_min_overlap: 0.75   # min. fraction of a window inside the groundTruth segment to get the gesture label
+  rest_from_gesture_recordings: false
+
+preprocessing:
+  filter:                     # causal Butterworth over the stream; none by default (Myo stream is band-limited)
+    type: none
+    cutoff_hz: 10
+    order: 4
+
+model:                        # EMGNet (src/myo_emg/models/emgnet.py)
+  channels: 64
+  n_blocks: 4
+  kernel_size: 5
+  dilation_growth: 2          # dilation of block i = growth**i
+  se: true                    # squeeze-excitation channel attention
+  temporal_head: attention    # attention | gru (BiGRU before pooling)
+  gru_hidden: 64
+  td_features: true           # in-network log MAV/RMS/WL branch
+  dropout: 0.3
+  head_dim: 128
+
+train:
+  device: auto                # auto -> cuda if available, else cpu
+  amp: bf16                   # bf16 autocast on CUDA (ignored on CPU)
+  batch_size: 1024
+  lr: 0.002
+  weight_decay: 0.01
+  warmup_epochs: 1
+  label_smoothing: 0.05
+  class_weighting: balanced   # none | balanced | sqrt  (window classes are nearly balanced already)
+  grad_clip: 1.0
+  epochs: 60                  # final training
+  patience: 10                # early stopping on validation macro F1
+  max_windows_per_epoch: null # null = all 1.9 M training windows per epoch
+  deterministic: false
+
+augment:                      # training only; aimed at cross-user / cross-session robustness
+  gain_range: 0.3             # per-window gain in [1/1.3, 1.3] (electrode contact, skin impedance)
+  channel_gain_jitter: 0.1    # per-channel log-gain std
+  rotate_p: 0.2               # P(rotate channels by +-1 electrode): armband worn slightly rotated
+  noise_std: 0.05             # Gaussian noise in z-score units
+
+hpo:
+  study_name: emgnet
+  n_trials: 40                # per `make hpo` call; the study resumes and accumulates trials
+  timeout_h: null             # optional wall-clock limit per call
+  epochs: 12                  # short trials ...
+  patience: 4
+  max_windows_per_epoch: 500000   # ... on a random 500k-window subset per epoch
+  startup_trials: 8           # random trials before TPE kicks in
+  pruner_startup_trials: 5
+  pruner_warmup_epochs: 3
+  search_space:               # dotted config keys
+    windowing.window_ms: {type: categorical, choices: [200, 250, 300]}
+    model.channels: {type: categorical, choices: [48, 64, 96, 128]}
+    model.n_blocks: {type: int, low: 2, high: 6}
+    model.kernel_size: {type: categorical, choices: [3, 5, 7]}
+    model.dilation_growth: {type: categorical, choices: [1, 2]}
+    model.se: {type: categorical, choices: [true, false]}
+    model.temporal_head: {type: categorical, choices: [attention, gru]}
+    model.gru_hidden: {type: categorical, choices: [32, 64, 96]}
+    model.td_features: {type: categorical, choices: [true, false]}
+    model.dropout: {type: float, low: 0.1, high: 0.5}
+    model.head_dim: {type: categorical, choices: [64, 128, 256]}
+    train.lr: {type: float, low: 0.0003, high: 0.005, log: true}
+    train.weight_decay: {type: float, low: 0.00001, high: 0.05, log: true}
+    train.batch_size: {type: categorical, choices: [512, 1024, 2048]}
+    train.label_smoothing: {type: float, low: 0.0, high: 0.15}
+    train.class_weighting: {type: categorical, choices: [none, balanced, sqrt]}
+    augment.gain_range: {type: float, low: 0.0, high: 0.5}
+    augment.channel_gain_jitter: {type: float, low: 0.0, high: 0.25}
+    augment.rotate_p: {type: float, low: 0.0, high: 0.5}
+    augment.noise_std: {type: float, low: 0.0, high: 0.2}
+
+selection:
+  max_latency_ms: 10.0        # single-window CPU latency limit (1 thread) for live use
+  max_model_size_mb: 50.0
